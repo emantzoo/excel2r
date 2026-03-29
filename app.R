@@ -136,6 +136,23 @@ ui <- page_navbar(
         htmlOutput("download_stats")
       )
     )
+  ),
+
+  # --- Tab 5: Verify ---
+  nav_panel(
+    title = "5. Verify",
+    icon = icon("check-double"),
+    card(
+      card_header("Compare R Values vs Excel"),
+      p("Run the generated script and compare computed values against Excel's cached formula results.",
+        "Harmless differences (floating-point precision, Excel errors, text placeholders) are excluded."),
+      actionButton("btn_verify", "Run Verification", class = "btn-primary mb-3"),
+      htmlOutput("verify_summary"),
+      conditionalPanel(
+        condition = "output.has_verify_results",
+        DTOutput("verify_table")
+      )
+    )
   )
 )
 
@@ -148,7 +165,8 @@ server <- function(input, output, session) {
   rv <- reactiveValues(
     results = NULL,    # output of process_excel_file()
     file_path = NULL,
-    processing = FALSE
+    processing = FALSE,
+    verify = NULL      # output of verify_against_excel()
   )
 
   # --- File Upload Handler ---
@@ -398,6 +416,72 @@ server <- function(input, output, session) {
       write.csv(generated_script()$report, file, row.names = FALSE)
     }
   )
+
+  # --- Verify Tab ---
+  observeEvent(input$btn_verify, {
+    req(rv$results, rv$file_path, generated_script())
+
+    rv$verify <- NULL  # reset
+
+    withProgress(message = "Verifying R values vs Excel...", value = 0, {
+      incProgress(0.1, detail = "Running generated script...")
+
+      tryCatch({
+        result <- verify_against_excel(
+          file_path = rv$file_path,
+          report = generated_script()$report,
+          script_text = generated_script()$script
+        )
+        rv$verify <- result
+        incProgress(0.9, detail = "Done!")
+      }, error = function(e) {
+        showNotification(paste("Verification error:", e$message),
+                         type = "error", duration = 10)
+      })
+    })
+  })
+
+  output$has_verify_results <- reactive({ !is.null(rv$verify) })
+  outputOptions(output, "has_verify_results", suspendWhenHidden = FALSE)
+
+  output$verify_summary <- renderUI({
+    req(rv$verify)
+    s <- rv$verify$summary
+
+    if (!is.null(s$error)) {
+      return(tags$div(class = "alert alert-danger", s$error))
+    }
+
+    match_pct <- if (s$total > 0) round(100 * s$matches / s$total, 1) else 0
+    alert_class <- if (s$value_mismatches == 0) "alert-success" else "alert-warning"
+
+    tags$div(
+      class = paste("alert", alert_class),
+      tags$strong(sprintf("%.1f%% match", match_pct)),
+      sprintf(" (%d / %d formulas)", s$matches, s$total),
+      tags$br(),
+      if (s$value_mismatches > 0)
+        tags$span(class = "text-danger",
+                  sprintf("%d value mismatch(es)", s$value_mismatches)),
+      if (s$fp_precision > 0)
+        tags$span(class = "text-muted ms-2",
+                  sprintf("| %d minor precision diffs", s$fp_precision)),
+      if (s$na_mismatches > 0)
+        tags$span(class = "text-muted ms-2",
+                  sprintf("| %d harmless NA/error diffs", s$na_mismatches))
+    )
+  })
+
+  output$verify_table <- renderDT({
+    req(rv$verify)
+    df <- rv$verify$mismatches
+    if (nrow(df) == 0) return(NULL)
+    datatable(
+      df,
+      options = list(pageLength = 25, scrollX = TRUE),
+      rownames = FALSE
+    )
+  })
 }
 
 # =============================================================================

@@ -1,5 +1,5 @@
 # =============================================================================
-# parse_formula.R — Tokenizer and parser for Excel formulas
+# parse_formula.R -- Tokenizer and parser for Excel formulas
 # Handles balanced parentheses and nested function calls
 # =============================================================================
 
@@ -129,19 +129,19 @@ extract_ranges <- function(formula) {
       while (left_pos > 0) {
         char <- substr(formula, left_pos, left_pos)
         if (char %in% c(",", "(", ")", ";", "-", "+", " ")) break
-        # Allow sheet!ref — include the sheet prefix
+        # Allow sheet!ref -- include the sheet prefix
         if (char == "!") {
           if (left_pos > 1 && substr(formula, left_pos - 1, left_pos - 1) == "'") {
-            # Part of 'Sheet Name'! — scan left past closing quote to find opening quote
+            # Part of 'Sheet Name'! -- scan left past closing quote to find opening quote
             left_pos <- left_pos - 2  # skip past the closing quote
             while (left_pos > 1 && substr(formula, left_pos, left_pos) != "'") {
               left_pos <- left_pos - 1
             }
-            # left_pos is now at the opening quote — stop scanning
+            # left_pos is now at the opening quote -- stop scanning
             left_pos <- left_pos - 1
             break
           }
-          # Unquoted sheet ref like Sheet1!A1:B10 — continue scanning left
+          # Unquoted sheet ref like Sheet1!A1:B10 -- continue scanning left
           left_pos <- left_pos - 1
           while (left_pos > 0) {
             ch2 <- substr(formula, left_pos, left_pos)

@@ -1,0 +1,154 @@
+---
+title: "Getting Started with excel2r"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with excel2r}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## Overview
+
+**excel2r** converts Excel formula workbooks into standalone R scripts.
+It extracts every formula, translates 62 Excel functions to R equivalents,
+resolves cross-sheet references, determines execution order via topological
+sort, and optionally exports raw data as tidy CSVs so the `.xlsx` file is
+no longer needed.
+
+## Installation
+
+Install from GitHub:
+
+```{r}
+# install.packages("remotes")
+remotes::install_github("emantzoo/excel2r")
+```
+
+## Quick Start
+
+### One-step migration
+
+The simplest way to migrate an Excel workbook:
+
+```{r}
+library(excel2r)
+
+excel2r::migrate("workbook.xlsx", "output/")
+```
+```
+#> Script written: output/generated_script.R
+#> CSV data exported: output/data/ (3 sheets)
+#> Verification: 42/45 match, 0 mismatches, 2 precision diffs, 1 harmless NA/error
+#> Done: 45 formulas (42 ok, 2 warnings, 1 errors) across 3 sheets
+```
+
+This creates:
+
+- `output/generated_script.R` -- a standalone R script reproducing all formulas
+- `output/data/*.csv` -- tidy long-format CSVs with raw cell data for each sheet
+
+### Process without writing files
+
+If you want to inspect the generated script before saving:
+
+```{r}
+result <- excel2r::process("workbook.xlsx")
+
+# View the generated R code
+cat(result$script)
+
+# Inspect the formula report
+head(result$report)
+```
+
+The report data frame has one row per formula cell with columns:
+`Sheet`, `Cell`, `Formula`, `R_Code`, `Status`, and `Warnings`.
+
+### Verify against Excel
+
+Compare R-computed values to Excel's cached results:
+
+```{r}
+result <- excel2r::process("workbook.xlsx", mode = "excel")
+v <- excel2r::verify("workbook.xlsx", result)
+
+print(v$summary)
+#> $total
+#> [1] 45
+#> $matches
+#> [1] 42
+#> $value_mismatches
+#> [1] 0
+#> $fp_precision
+#> [1] 2
+#> $na_mismatches
+#> [1] 1
+
+# Inspect any mismatches
+View(v$mismatches)
+```
+
+## Output Modes
+
+### CSV mode (default, standalone)
+
+```{r}
+excel2r::migrate("workbook.xlsx", "output/", mode = "csv")
+```
+
+The generated script reads from CSVs, so the Excel file is no longer needed.
+This is the recommended mode for reproducible workflows.
+
+### Excel mode
+
+```{r}
+excel2r::migrate("workbook.xlsx", "output/", mode = "excel")
+```
+
+The generated script reads directly from the `.xlsx` file using `readxl`.
+Lighter output (no CSVs) but requires the Excel file at runtime.
+
+## Supported Excel Functions
+
+excel2r translates 62 Excel functions:
+
+```{r, eval = TRUE}
+library(excel2r)
+excel2r::supported_functions()
+```
+
+Categories include: aggregation (SUM, AVERAGE, MIN, MAX, ...), conditional
+(IF, IFS, IFERROR, ...), lookup (VLOOKUP, HLOOKUP, INDEX, MATCH, XLOOKUP),
+math (ROUND, ABS, SQRT, ...), text (CONCATENATE, LEFT, RIGHT, MID, ...),
+logical (AND, OR, NOT), and counting (COUNT, COUNTA, COUNTIF, COUNTIFS, ...).
+
+## Interactive App
+
+For a guided workflow with a web UI:
+
+```{r}
+excel2r::run_app()
+```
+
+This launches a 5-step Shiny app: upload, configure, preview formulas,
+download script & data, and verify results.
+
+## Options
+
+Key arguments for `migrate()`:
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `mode` | `"csv"` | `"csv"` for standalone, `"excel"` for xlsx-dependent |
+| `include_named_tables` | `TRUE` | Detect and export Excel named tables |
+| `wrap_trycatch` | `TRUE` | Wrap formula cells in tryCatch for robustness |
+| `include_comments` | `TRUE` | Add original Excel formulas as `# comments` |
+| `verify` | `TRUE` | Run verification after migration |

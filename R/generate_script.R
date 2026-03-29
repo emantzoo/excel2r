@@ -1,5 +1,5 @@
 # =============================================================================
-# generate_script.R — Assembles the downloadable .R output script
+# generate_script.R -- Assembles the downloadable .R output script
 # =============================================================================
 
 #' @keywords internal
@@ -365,7 +365,7 @@ generate_r_script <- function(excel_path, formula_data, sheet_names, sheet_dims,
     add("  if (grepl('^<=', s)) return(list(op = '<=', val = as.numeric(sub('^<=', '', s))))")
     add("  if (grepl('^>', s))  return(list(op = '>',  val = as.numeric(sub('^>', '', s))))")
     add("  if (grepl('^<', s))  return(list(op = '<',  val = as.numeric(sub('^<', '', s))))")
-    add("  # Plain value — try numeric first")
+    add("  # Plain value -- try numeric first")
     add("  num <- suppressWarnings(as.numeric(s))")
     add("  if (!is.na(num)) return(list(op = '==', val = num))")
     add("  list(op = '==', val = s)")
@@ -674,7 +674,7 @@ identify_criteria_columns <- function(formula_data, sheet_names) {
     }
 
     if (grepl("^SUMIF\\(", formula, ignore.case = TRUE) && length(valid_ranges) >= 1) {
-      # SUMIF(range, criteria, sum_range) — range is the criteria range
+      # SUMIF(range, criteria, sum_range) -- range is the criteria range
       rng <- valid_ranges[1]
       target_sheet <- resolve_range_sheet(rng, sheet, sheet_names)
       rng_cell <- if (grepl("!", rng)) strsplit(rng, "!")[[1]][2] else rng

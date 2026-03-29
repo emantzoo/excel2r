@@ -1,5 +1,5 @@
 # =============================================================================
-# transform_references.R — Transform Excel cell/range references to R syntax
+# transform_references.R -- Transform Excel cell/range references to R syntax
 # =============================================================================
 
 #' @keywords internal
@@ -77,7 +77,7 @@ transform_range <- function(ref, current_sheet, sheet_dims = NULL) {
       return(sprintf("unlist(%s[1:%d, c(%s)])", sheet, max_row, cols_str))
     }
   } else if (col1 == col2 && !is.na(row1) && !is.na(row2)) {
-    # Same-column range (e.g., D10:D12) — most common case
+    # Same-column range (e.g., D10:D12) -- most common case
     return(sprintf("%s$%s[%d:%d]", sheet, col1, row1, row2))
   } else if (col1 != col2 && !is.na(row1) && !is.na(row2)) {
     # Multi-column range (e.g., A1:D10)
@@ -111,7 +111,7 @@ transform_cell_references <- function(formula, sheet, sheet_dims = NULL) {
   # Filter out placeholders and pure numbers
   single_refs <- single_refs[!grepl("<RANGE_", single_refs)]
   # Filter out things that look like they could be part of function names
-  # by checking if preceded by a letter — but simpler: just check format
+  # by checking if preceded by a letter -- but simpler: just check format
   single_refs <- single_refs[grepl("^'?[^']*'?!?\\$?[A-Z]{1,3}\\$?[0-9]+$", single_refs)]
 
   # Sort by length descending to avoid partial replacements (e.g., replacing "A1" inside "AA1")

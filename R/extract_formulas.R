@@ -1,5 +1,5 @@
 # =============================================================================
-# extract_formulas.R — Extract formulas and dimensions from any Excel file
+# extract_formulas.R -- Extract formulas and dimensions from any Excel file
 # =============================================================================
 
 #' @keywords internal

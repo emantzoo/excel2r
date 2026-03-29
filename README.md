@@ -146,7 +146,7 @@ Upload an Excel file and follow the 5-step workflow:
 
 ## Demo
 
-A demo workbook is included at `inst/demo/sales_report_demo.xlsx` with 5 sheets:
+A demo workbook is included at `inst/extdata/sales_report_demo.xlsx` with 5 sheets:
 
 | Sheet | Contents |
 | --- | --- |
@@ -232,7 +232,7 @@ excel2r-app/
 │   ├── generate_script.R        # Script assembler (Excel + CSV modes)
 │   └── verify_values.R          # R vs Excel value comparison
 ├── tests/testthat/              # Unit & integration tests
-├── inst/demo/                   # Demo Excel workbooks
+├── inst/extdata/                   # Demo Excel workbooks
 ├── Dockerfile                   # Cloud Run deployment
 └── run_tests.R                  # Test runner
 ```

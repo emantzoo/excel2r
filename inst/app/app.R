@@ -1,5 +1,5 @@
 # =============================================================================
-# Excel2R — Convert Excel formulas to executable R code
+# Excel2R -- Convert Excel formulas to executable R code
 # Shiny Web Application (package mode: inst/app/app.R)
 # =============================================================================
 
@@ -495,7 +495,7 @@ server <- function(input, output, session) {
 
       tryCatch({
         # Always use Excel-mode script for verification
-        # (CSV files don't exist on disk — only created at download)
+        # (CSV files don't exist on disk -- only created at download)
         excel_version <- build_script(data_source = "excel")
         result <- verify_against_excel(
           file_path = rv$file_path,

@@ -14,6 +14,8 @@
 #'   \item{\code{\link{run_app}}}{Launch the interactive Shiny interface}
 #' }
 #'
+#' @importFrom stats setNames
+#' @importFrom utils write.csv
 #' @docType package
 #' @name excel2r-package
 "_PACKAGE"

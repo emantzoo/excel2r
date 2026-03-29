@@ -1,5 +1,5 @@
 # =============================================================================
-# utils.R — Shared utility functions for Excel-to-R conversion
+# utils.R -- Shared utility functions for Excel-to-R conversion
 # =============================================================================
 
 #' @keywords internal

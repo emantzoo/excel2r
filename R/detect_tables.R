@@ -1,5 +1,5 @@
 # =============================================================================
-# detect_tables.R — Detect Excel named tables (ListObjects)
+# detect_tables.R -- Detect Excel named tables (ListObjects)
 # =============================================================================
 
 #' @keywords internal

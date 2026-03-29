@@ -1,5 +1,5 @@
 # =============================================================================
-# dependency_order.R — Kahn's topological sort for formula execution ordering
+# dependency_order.R -- Kahn's topological sort for formula execution ordering
 # =============================================================================
 
 #' @keywords internal
@@ -148,7 +148,7 @@ kahns_sort <- function(nodes, deps) {
       if (dep %in% nodes) {
         reverse_graph[[dep]] <- c(reverse_graph[[dep]], node)
       } else {
-        # Dependency on non-formula cell (raw data) — not a real dependency
+        # Dependency on non-formula cell (raw data) -- not a real dependency
         indegree[node] <- indegree[node] - 1L
       }
     }

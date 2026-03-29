@@ -1,5 +1,5 @@
 # =============================================================================
-# export_csv.R — Export sheet data as tidy long-format CSVs
+# export_csv.R -- Export sheet data as tidy long-format CSVs
 # =============================================================================
 
 #' @keywords internal
@@ -49,7 +49,7 @@ extract_referenced_cells <- function(formula_data, sheet_names, sheet_dims = NUL
       p2 <- parse_cell_address(range_parts[2])
 
       if (is.na(p1$row) || is.na(p2$row)) {
-        # Whole-column reference like A:A or B:D — mark columns, don't expand
+        # Whole-column reference like A:A or B:D -- mark columns, don't expand
         col1_idx <- col_letter_to_index(p1$col)
         col2_idx <- col_letter_to_index(p2$col)
         for (ci in col1_idx:col2_idx) {
@@ -204,7 +204,7 @@ export_sheet_csvs <- function(file_path, sheet_names, output_dir,
     }
 
     # Also add referenced cells that don't exist at all in tidyxl
-    # (completely empty cells — not even in all_cells)
+    # (completely empty cells -- not even in all_cells)
     if (!is.null(sheet_ref_set) && length(sheet_ref_set) > 0) {
       existing_addrs <- cell_addrs
       # Also exclude formula cells from the "missing" set

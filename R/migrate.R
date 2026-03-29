@@ -1,5 +1,5 @@
 # =============================================================================
-# migrate.R — Public API for excel2r package
+# migrate.R -- Public API for excel2r package
 # =============================================================================
 
 #' Migrate an Excel workbook to R

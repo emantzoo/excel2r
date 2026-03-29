@@ -1,5 +1,5 @@
 # =============================================================================
-# transform_functions.R — Excel function -> R code registry
+# transform_functions.R -- Excel function -> R code registry
 # =============================================================================
 
 #' @keywords internal

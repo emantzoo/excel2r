@@ -5,7 +5,7 @@
 test_that("verify_against_excel works on demo workbook", {
   demo_file <- file.path(
     normalizePath(file.path(getwd(), "..", ".."), winslash = "/"),
-    "inst/demo/sales_report_demo.xlsx"
+    "inst/extdata/sales_report_demo.xlsx"
   )
   skip_if_not(file.exists(demo_file), "Demo workbook not found")
 
@@ -33,7 +33,7 @@ test_that("verify_against_excel works on demo workbook", {
 test_that("verify_against_excel returns correct structure", {
   demo_file <- file.path(
     normalizePath(file.path(getwd(), "..", ".."), winslash = "/"),
-    "inst/demo/sales_report_demo.xlsx"
+    "inst/extdata/sales_report_demo.xlsx"
   )
   skip_if_not(file.exists(demo_file), "Demo workbook not found")
 

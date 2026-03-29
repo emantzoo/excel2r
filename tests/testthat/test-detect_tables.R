@@ -59,10 +59,10 @@ test_that("detect_named_tables finds tables in test workbook", {
 test_that("detect_named_tables returns empty data frame when no tables", {
   # Use the demo file which has no named tables
   candidates <- c(
-    "inst/demo/sales_report_demo.xlsx",
-    "../../inst/demo/sales_report_demo.xlsx",
-    file.path(getwd(), "inst/demo/sales_report_demo.xlsx"),
-    file.path(getwd(), "../../inst/demo/sales_report_demo.xlsx")
+    "inst/extdata/sales_report_demo.xlsx",
+    "../../inst/extdata/sales_report_demo.xlsx",
+    file.path(getwd(), "inst/extdata/sales_report_demo.xlsx"),
+    file.path(getwd(), "../../inst/extdata/sales_report_demo.xlsx")
   )
   demo_file <- NULL
   for (f in candidates) {

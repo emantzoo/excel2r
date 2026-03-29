@@ -6,3 +6,6 @@
 ^.*\.Rproj$
 ^inst/create_demo_workbook\.R$
 ^run_tests\.R$
+^\.dockerignore$
+^excel2r\.Rcheck$
+^excel2r_.*\.tar\.gz$

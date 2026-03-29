@@ -1,6 +1,6 @@
 # =============================================================================
 # Create a demo Excel workbook with complex multi-sheet formulas
-# Run this once to generate inst/demo/sales_report_demo.xlsx
+# Run this once to generate inst/extdata/sales_report_demo.xlsx
 # =============================================================================
 
 library(openxlsx2)
@@ -8,7 +8,7 @@ library(openxlsx2)
 wb <- wb_workbook()
 
 # ============================================================
-# Sheet 1: "Products" — master product list with pricing
+# Sheet 1: "Products" -- master product list with pricing
 # ============================================================
 wb$add_worksheet("Products")
 
@@ -56,7 +56,7 @@ wb$add_formula(sheet = "Products", x = 'COUNTIF(G2:G11,"Active")', dims = "D17")
 
 
 # ============================================================
-# Sheet 2: "Q1 Sales" — quarterly sales data
+# Sheet 2: "Q1 Sales" -- quarterly sales data
 # ============================================================
 wb$add_worksheet("Q1 Sales")
 
@@ -120,7 +120,7 @@ wb$add_formula(sheet = "Q1 Sales", x = "SUM(F2:F20)", dims = "F23")
 wb$add_formula(sheet = "Q1 Sales", x = "SUM(H2:H20)", dims = "H24")
 wb$add_formula(sheet = "Q1 Sales", x = "AVERAGE(G2:G20)", dims = "G25")
 
-# SUMIFS — revenue by region
+# SUMIFS -- revenue by region
 wb$add_formula(sheet = "Q1 Sales", x = 'SUMIFS(F2:F20,C2:C20,"North")', dims = "F26")
 wb$add_formula(sheet = "Q1 Sales", x = 'SUMIFS(F2:F20,C2:C20,"South")', dims = "F27")
 wb$add_formula(sheet = "Q1 Sales", x = 'SUMIFS(F2:F20,C2:C20,"East")', dims = "F28")
@@ -128,7 +128,7 @@ wb$add_formula(sheet = "Q1 Sales", x = 'SUMIFS(F2:F20,C2:C20,"West")', dims = "F
 
 
 # ============================================================
-# Sheet 3: "Q2 Sales" — same structure, different data
+# Sheet 3: "Q2 Sales" -- same structure, different data
 # ============================================================
 wb$add_worksheet("Q2 Sales")
 
@@ -185,7 +185,7 @@ wb$add_formula(sheet = "Q2 Sales", x = 'SUMIFS(F2:F16,C2:C16,"West")', dims = "F
 
 
 # ============================================================
-# Sheet 4: "Annual Summary" — cross-sheet references & complex formulas
+# Sheet 4: "Annual Summary" -- cross-sheet references & complex formulas
 # ============================================================
 wb$add_worksheet("Annual Summary")
 
@@ -224,10 +224,10 @@ wb$add_formula(sheet = "Annual Summary", x = "B3+C3", dims = "D3")
 wb$add_formula(sheet = "Annual Summary", x = "B4+C4", dims = "D4")
 wb$add_formula(sheet = "Annual Summary", x = "AVERAGE(B5,C5)", dims = "D5")
 
-# Revenue growth: (Q2-Q1)/Q1 — uses IFERROR for safety
+# Revenue growth: (Q2-Q1)/Q1 -- uses IFERROR for safety
 wb$add_formula(sheet = "Annual Summary", x = "IFERROR((C3-B3)/B3,0)", dims = "D6")
 
-# Region breakdown — cross-sheet refs
+# Region breakdown -- cross-sheet refs
 wb$add_formula(sheet = "Annual Summary", x = "'Q1 Sales'!F26", dims = "B9")
 wb$add_formula(sheet = "Annual Summary", x = "'Q1 Sales'!F27", dims = "B10")
 wb$add_formula(sheet = "Annual Summary", x = "'Q1 Sales'!F28", dims = "B11")
@@ -247,7 +247,7 @@ wb$add_formula(sheet = "Annual Summary", x = "B11+C11", dims = "D11")
 wb$add_formula(sheet = "Annual Summary", x = "B12+C12", dims = "D12")
 wb$add_formula(sheet = "Annual Summary", x = "SUM(D9:D12)", dims = "D13")
 
-# Category analysis — cross-sheet to Products
+# Category analysis -- cross-sheet to Products
 wb$add_formula(sheet = "Annual Summary", x = "'Products'!F13", dims = "B16")
 wb$add_formula(sheet = "Annual Summary", x = "'Products'!D17", dims = "B17")
 
@@ -256,7 +256,7 @@ wb$add_formula(sheet = "Annual Summary", x = "IF(B17>0,D3/B17,0)", dims = "B18")
 
 
 # ============================================================
-# Sheet 5: "Pivot Analysis" — more SUMIFS, COUNTIFS, nested IF
+# Sheet 5: "Pivot Analysis" -- more SUMIFS, COUNTIFS, nested IF
 # ============================================================
 wb$add_worksheet("Pivot Analysis")
 
@@ -347,7 +347,7 @@ wb$add_formula(sheet = "Pivot Analysis",
 # ============================================================
 # Save the workbook
 # ============================================================
-out_file <- "inst/demo/sales_report_demo.xlsx"
+out_file <- "inst/extdata/sales_report_demo.xlsx"
 wb_save(wb, out_file, overwrite = TRUE)
 cat("Demo workbook saved to:", out_file, "\n")
 cat("Sheets:", paste(wb$get_sheet_names(), collapse = ", "), "\n")

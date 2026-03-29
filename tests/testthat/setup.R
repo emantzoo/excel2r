@@ -17,23 +17,23 @@ if (!exists("sanitize_sheet_name", mode = "function")) {
 
 find_demo_file <- function() {
   # Package mode: use system.file
-  f <- system.file("demo/sales_report_demo.xlsx", package = "excel2r")
+  f <- system.file("extdata/sales_report_demo.xlsx", package = "excel2r")
   if (f != "") return(f)
   # Standalone mode: resolve relative to working directory
   f <- file.path(
     normalizePath(file.path(getwd(), "..", ".."), winslash = "/"),
-    "inst/demo/sales_report_demo.xlsx"
+    "inst/extdata/sales_report_demo.xlsx"
   )
   if (file.exists(f)) return(f)
   NULL
 }
 
 find_named_tables_file <- function() {
-  f <- system.file("demo/test_named_tables.xlsx", package = "excel2r")
+  f <- system.file("extdata/test_named_tables.xlsx", package = "excel2r")
   if (f != "") return(f)
   f <- file.path(
     normalizePath(file.path(getwd(), "..", ".."), winslash = "/"),
-    "inst/demo/test_named_tables.xlsx"
+    "inst/extdata/test_named_tables.xlsx"
   )
   if (file.exists(f)) return(f)
   NULL

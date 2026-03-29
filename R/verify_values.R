@@ -1,5 +1,5 @@
 # =============================================================================
-# verify_values.R — Compare R-computed values against Excel cached values
+# verify_values.R -- Compare R-computed values against Excel cached values
 # =============================================================================
 
 #' @keywords internal
@@ -97,24 +97,24 @@ verify_against_excel <- function(file_path, report, script_text) {
 
     # Classification
     if (e_na && excel_has_formula) {
-      # Formula exists but no cached value — workbook not recalculated
+      # Formula exists but no cached value -- workbook not recalculated
       # Can't compare; treat as harmless
       na_mismatches <- na_mismatches + 1L
 
     } else if (r_na && e_na) {
-      # Both NA — match
+      # Both NA -- match
       matches <- matches + 1L
 
     } else if (excel_is_error) {
-      # Excel error (#VALUE!, #REF!, etc.) — harmless, R can't replicate
+      # Excel error (#VALUE!, #REF!, etc.) -- harmless, R can't replicate
       na_mismatches <- na_mismatches + 1L
 
     } else if (excel_is_text && is.numeric(r_value) && isTRUE(r_value == 0)) {
-      # R=0 (from NA->0 conversion) vs Excel text placeholder — harmless
+      # R=0 (from NA->0 conversion) vs Excel text placeholder -- harmless
       na_mismatches <- na_mismatches + 1L
 
     } else if (r_na && !e_na) {
-      # R is NA but Excel has a value — real mismatch
+      # R is NA but Excel has a value -- real mismatch
       value_mismatches <- value_mismatches + 1L
       mismatch_rows[[length(mismatch_rows) + 1]] <- data.frame(
         Sheet = sheet, Cell = cell, Formula = formulas$Formula[i],
@@ -123,7 +123,7 @@ verify_against_excel <- function(file_path, report, script_text) {
       )
 
     } else if (!r_na && e_na) {
-      # R has value but Excel is empty — real mismatch
+      # R has value but Excel is empty -- real mismatch
       value_mismatches <- value_mismatches + 1L
       mismatch_rows[[length(mismatch_rows) + 1]] <- data.frame(
         Sheet = sheet, Cell = cell, Formula = formulas$Formula[i],

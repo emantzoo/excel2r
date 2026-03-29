@@ -3,7 +3,7 @@ Title: Migrate Excel Workbooks to R
 Version: 0.1.0
 Authors@R:
     person("Eirini", "Mantzouni", email = "emantzouni@gmail.com",
-           role = c("aut", "cre"))
+           role = c("aut", "cre", "cph"))
 Description: Converts Excel formula workbooks into standalone R scripts.
     Extracts every formula, translates 62 Excel functions to R equivalents,
     resolves cross-sheet references, determines execution order via topological

@@ -57,10 +57,11 @@ detect_sheet_dimensions <- function(file_path, sheet_names = NULL) {
     if (nrow(sheet_cells) > 0) {
       dims[[sheet]] <- list(
         max_row = max(sheet_cells$row, na.rm = TRUE),
-        max_col = max(sheet_cells$col, na.rm = TRUE)
+        max_col = max(sheet_cells$col, na.rm = TRUE),
+        min_col = min(sheet_cells$col, na.rm = TRUE)
       )
     } else {
-      dims[[sheet]] <- list(max_row = 0, max_col = 0)
+      dims[[sheet]] <- list(max_row = 0, max_col = 0, min_col = 1)
     }
   }
   dims

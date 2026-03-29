@@ -459,18 +459,17 @@ generate_r_script <- function(excel_path, formula_data, sheet_names, sheet_dims,
     add("# Sheet: \"", s, "\" -> ", s_sanitized)
     add(s_sanitized, " <- as.data.frame(openxlsx2::read_xlsx(")
     add("  excel_file, sheet = \"", s, "\",")
-    add("  rows = 1:", max_row, ",")
+    add("  rows = 1:", max_row, ", cols = 1:", max_col, ",")
     add("  skip_empty_rows = FALSE, skip_empty_cols = FALSE, col_names = FALSE")
     add("))")
     blank()
 
-    add("# Set column names")
-    add("col_names_", s_sanitized, " <- generate_col_names(", max_col, ")")
+    add("# Ensure correct column count and names")
     add("if (ncol(", s_sanitized, ") < ", max_col, ") {")
     add("  ", s_sanitized, "[(ncol(", s_sanitized, ") + 1):", max_col, "] <- NA")
     add("}")
     add(s_sanitized, " <- ", s_sanitized, "[, 1:", max_col, ", drop = FALSE]")
-    add("colnames(", s_sanitized, ") <- col_names_", s_sanitized)
+    add("colnames(", s_sanitized, ") <- generate_col_names(", max_col, ")")
     blank()
 
     # Type conversion
@@ -478,17 +477,21 @@ generate_r_script <- function(excel_path, formula_data, sheet_names, sheet_dims,
     if (length(sheet_crit_cols) > 0) {
       crit_str <- paste0('"', sheet_crit_cols, '"', collapse = ", ")
       add("# Convert to numeric, preserving criteria columns as character")
+      add("# Blank/text cells become 0 in numeric columns (matches Excel behavior)")
       add("for (.col in colnames(", s_sanitized, ")) {")
       add("  if (.col %in% c(", crit_str, ")) {")
       add("    ", s_sanitized, "[[.col]] <- as.character(", s_sanitized, "[[.col]])")
       add("  } else {")
       add("    ", s_sanitized, "[[.col]] <- suppressWarnings(as.numeric(as.character(", s_sanitized, "[[.col]])))")
+      add("    ", s_sanitized, "[[.col]][is.na(", s_sanitized, "[[.col]])] <- 0")
       add("  }")
       add("}")
     } else {
       add("# Convert all columns to numeric")
+      add("# Blank/text cells become 0 (matches Excel behavior)")
       add("for (.col in colnames(", s_sanitized, ")) {")
       add("  ", s_sanitized, "[[.col]] <- suppressWarnings(as.numeric(as.character(", s_sanitized, "[[.col]])))")
+      add("  ", s_sanitized, "[[.col]][is.na(", s_sanitized, "[[.col]])] <- 0")
       add("}")
     }
 

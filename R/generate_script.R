@@ -15,6 +15,7 @@ process_excel_file <- function(file_path,
                                 wrap_trycatch = TRUE,
                                 include_comments = TRUE,
                                 include_named_tables = TRUE,
+                                data_source = "excel",
                                 excel_path_in_script = NULL,
                                 progress_callback = NULL) {
 
@@ -132,7 +133,8 @@ process_excel_file <- function(file_path,
     used_functions = used_functions,
     wrap_trycatch = wrap_trycatch,
     include_comments = include_comments,
-    named_tables = named_tables
+    named_tables = named_tables,
+    data_source = data_source
   )
 
   list(script = script, report = report, warnings = unique(all_warnings),
@@ -143,7 +145,7 @@ process_excel_file <- function(file_path,
 #' Generate the self-contained R script
 generate_r_script <- function(excel_path, formula_data, sheet_names, sheet_dims,
                                exec_order, used_functions, wrap_trycatch, include_comments,
-                               named_tables = NULL) {
+                               named_tables = NULL, data_source = "excel") {
   L <- character(0)  # lines accumulator
   add <- function(...) L <<- c(L, paste0(...))
   blank <- function() L <<- c(L, "")
@@ -164,23 +166,36 @@ generate_r_script <- function(excel_path, formula_data, sheet_names, sheet_dims,
   blank()
 
   # === SECTION 2: Required Packages ===
-  add("# --- Required Packages ---")
-  add('if (!requireNamespace("openxlsx2", quietly = TRUE)) install.packages("openxlsx2")')
-
-  # Check if IFS/case_when is used
   uses_ifs <- any(grepl("dplyr::case_when", formula_data$R_Code, fixed = TRUE))
-  if (uses_ifs) {
-    add('if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")')
-  }
 
-  blank()
-  add("library(openxlsx2)")
-  if (uses_ifs) add("library(dplyr)")
+  if (data_source == "csv") {
+    if (uses_ifs) {
+      add("# --- Required Packages ---")
+      add('if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")')
+      blank()
+      add("library(dplyr)")
+    } else {
+      add("# --- No external packages required (base R only) ---")
+    }
+  } else {
+    add("# --- Required Packages ---")
+    add('if (!requireNamespace("openxlsx2", quietly = TRUE)) install.packages("openxlsx2")')
+    if (uses_ifs) {
+      add('if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")')
+    }
+    blank()
+    add("library(openxlsx2)")
+    if (uses_ifs) add("library(dplyr)")
+  }
   blank()
 
   # === SECTION 3: Configuration ===
   add("# --- Configuration ---")
-  add('excel_file <- "', excel_path, '"')
+  if (data_source == "csv") {
+    add('data_dir <- "data"')
+  } else {
+    add('excel_file <- "', excel_path, '"')
+  }
   blank()
 
   # === SECTION 4: Helper Functions ===
@@ -213,6 +228,23 @@ generate_r_script <- function(excel_path, formula_data, sheet_names, sheet_dims,
   add("# Generate column names")
   add("generate_col_names <- function(n) vapply(1:n, index_to_col_letter, character(1))")
   blank()
+
+  if (data_source == "csv") {
+    add("# Reconstruct sheet grid from tidy CSV (row, col, value)")
+    add("reconstruct_grid <- function(csv_path, max_row, max_col) {")
+    add("  raw <- read.csv(csv_path, stringsAsFactors = FALSE, colClasses = 'character')")
+    add("  col_names <- generate_col_names(max_col)")
+    add("  grid <- data.frame(matrix(NA, nrow = max_row, ncol = max_col))")
+    add("  colnames(grid) <- col_names")
+    add("  for (i in seq_len(nrow(raw))) {")
+    add("    r <- as.integer(raw$row[i])")
+    add("    c <- raw$col[i]")
+    add("    if (r <= max_row && c %in% col_names) grid[[c]][r] <- raw$value[i]")
+    add("  }")
+    add("  grid")
+    add("}")
+    blank()
+  }
 
   # Lookup helpers if needed
   uses_vlookup <- any(grepl("excel_vlookup", formula_data$R_Code, fixed = TRUE))
@@ -439,9 +471,13 @@ generate_r_script <- function(excel_path, formula_data, sheet_names, sheet_dims,
     blank()
   }
 
-  # === SECTION 5: Load Excel Data ===
+  # === SECTION 5: Load Data ===
   add("# ============================================================")
-  add("# Load Excel Data")
+  if (data_source == "csv") {
+    add("# Load Data from CSV files")
+  } else {
+    add("# Load Excel Data")
+  }
   add("# ============================================================")
   blank()
 
@@ -457,19 +493,28 @@ generate_r_script <- function(excel_path, formula_data, sheet_names, sheet_dims,
     max_col <- dims$max_col
 
     add("# Sheet: \"", s, "\" -> ", s_sanitized)
-    add(s_sanitized, " <- as.data.frame(openxlsx2::read_xlsx(")
-    add("  excel_file, sheet = \"", s, "\",")
-    add("  rows = 1:", max_row, ", cols = 1:", max_col, ",")
-    add("  skip_empty_rows = FALSE, skip_empty_cols = FALSE, col_names = FALSE")
-    add("))")
-    blank()
 
-    add("# Ensure correct column count and names")
-    add("if (ncol(", s_sanitized, ") < ", max_col, ") {")
-    add("  ", s_sanitized, "[(ncol(", s_sanitized, ") + 1):", max_col, "] <- NA")
-    add("}")
-    add(s_sanitized, " <- ", s_sanitized, "[, 1:", max_col, ", drop = FALSE]")
-    add("colnames(", s_sanitized, ") <- generate_col_names(", max_col, ")")
+    if (data_source == "csv") {
+      csv_filename <- paste0(s_sanitized, ".csv")
+      add(s_sanitized, " <- reconstruct_grid(")
+      add("  file.path(data_dir, \"", csv_filename, "\"),")
+      add("  max_row = ", max_row, ", max_col = ", max_col)
+      add(")")
+    } else {
+      add(s_sanitized, " <- as.data.frame(openxlsx2::read_xlsx(")
+      add("  excel_file, sheet = \"", s, "\",")
+      add("  rows = 1:", max_row, ", cols = 1:", max_col, ",")
+      add("  skip_empty_rows = FALSE, skip_empty_cols = FALSE, col_names = FALSE")
+      add("))")
+      blank()
+
+      add("# Ensure correct column count and names")
+      add("if (ncol(", s_sanitized, ") < ", max_col, ") {")
+      add("  ", s_sanitized, "[(ncol(", s_sanitized, ") + 1):", max_col, "] <- NA")
+      add("}")
+      add(s_sanitized, " <- ", s_sanitized, "[, 1:", max_col, ", drop = FALSE]")
+      add("colnames(", s_sanitized, ") <- generate_col_names(", max_col, ")")
+    }
     blank()
 
     # Type conversion

@@ -452,7 +452,7 @@ server <- function(input, output, session) {
       return(tags$div(class = "alert alert-danger", s$error))
     }
 
-    match_pct <- if (s$total > 0) round(100 * s$matches / s$total, 1) else 0
+    match_pct <- if (s$total > 0) round(100 * (s$matches + s$fp_precision + s$na_mismatches) / s$total, 1) else 0
     alert_class <- if (s$value_mismatches == 0) "alert-success" else "alert-warning"
 
     tags$div(

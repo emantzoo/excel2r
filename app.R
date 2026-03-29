@@ -106,8 +106,18 @@ ui <- page_navbar(
         checkboxInput("opt_trycatch", "Wrap each formula in tryCatch() for error safety", value = TRUE),
         checkboxInput("opt_comments", "Include original Excel formulas as comments", value = TRUE),
         checkboxInput("opt_named_tables", "Generate named table data frames with real column headers", value = TRUE),
-        textInput("opt_filepath", "Excel file path in generated script:",
-                  value = "", placeholder = "e.g., data/my_workbook.xlsx")
+        radioButtons("opt_data_source", "Data source in generated script:",
+          choices = list(
+            "Read from Excel file (requires .xlsx at runtime)" = "excel",
+            "Read from CSV files (standalone, no Excel needed)" = "csv"
+          ),
+          selected = "excel"
+        ),
+        conditionalPanel(
+          condition = "input.opt_data_source == 'excel'",
+          textInput("opt_filepath", "Excel file path in generated script:",
+                    value = "", placeholder = "e.g., data/my_workbook.xlsx")
+        )
       ),
       card(
         card_header("Sheet Selection"),
@@ -333,7 +343,12 @@ server <- function(input, output, session) {
     # Determine which sheets to include
     selected <- if (!is.null(input$selected_sheets)) input$selected_sheets else unique(rv$results$report$Sheet)
 
-    excel_path <- if (nchar(input$opt_filepath) > 0) input$opt_filepath else input$upload$name
+    data_source <- input$opt_data_source
+    excel_path <- if (data_source == "excel" && nchar(input$opt_filepath) > 0) {
+      input$opt_filepath
+    } else {
+      input$upload$name
+    }
 
     # Filter cached report for selected sheets
     report <- rv$results$report
@@ -366,10 +381,12 @@ server <- function(input, output, session) {
       used_functions = used_functions,
       wrap_trycatch = input$opt_trycatch,
       include_comments = input$opt_comments,
-      named_tables = named_tables
+      named_tables = named_tables,
+      data_source = data_source
     )
 
-    list(script = script, report = report, warnings = rv$results$warnings)
+    list(script = script, report = report, warnings = rv$results$warnings,
+         data_source = data_source)
   })
 
   # --- Script Preview ---
@@ -387,12 +404,20 @@ server <- function(input, output, session) {
 
   output$download_stats <- renderUI({
     req(generated_script())
-    script <- generated_script()$script
+    result <- generated_script()
+    script <- result$script
     n_lines <- length(strsplit(script, "\n")[[1]])
     size_kb <- round(nchar(script) / 1024, 1)
+
+    mode_text <- if (identical(result$data_source, "csv")) {
+      "Standalone mode: .zip with R script + CSV data (no Excel needed)"
+    } else {
+      "Excel mode: R script reads from .xlsx at runtime"
+    }
+
     tags$div(
-      tags$p(icon("file-code"), sprintf(" %d lines", n_lines)),
-      tags$p(icon("weight-hanging"), sprintf(" %.1f KB", size_kb))
+      tags$p(icon("file-code"), sprintf(" %d lines, %.1f KB", n_lines, size_kb)),
+      tags$p(tags$strong(mode_text))
     )
   })
 
@@ -400,10 +425,48 @@ server <- function(input, output, session) {
   output$download_script <- downloadHandler(
     filename = function() {
       name <- tools::file_path_sans_ext(input$upload$name)
-      paste0(name, "_generated.R")
+      if (identical(input$opt_data_source, "csv")) {
+        paste0(name, "_standalone.zip")
+      } else {
+        paste0(name, "_generated.R")
+      }
     },
     content = function(file) {
-      writeLines(generated_script()$script, file)
+      result <- generated_script()
+      if (identical(result$data_source, "csv")) {
+        tmp_dir <- tempfile()
+        project_dir <- file.path(tmp_dir, "excel2r_output")
+        data_dir <- file.path(project_dir, "data")
+        dir.create(data_dir, showWarnings = FALSE, recursive = TRUE)
+        on.exit(unlink(tmp_dir, recursive = TRUE), add = TRUE)
+
+        sheets <- unique(result$report$Sheet)
+        export_sheet_csvs(rv$file_path, sheets, data_dir)
+
+        writeLines(result$script, file.path(project_dir, "generated_script.R"))
+
+        writeLines(c(
+          "# Excel2R Standalone Output",
+          "",
+          "## Contents",
+          "- generated_script.R - R script that computes all Excel formulas",
+          "- data/ - raw cell values from each sheet (tidy format: row, col, value)",
+          "",
+          "## Usage",
+          "1. Edit CSV files in data/ to change input values",
+          "2. Run: source('generated_script.R')",
+          "3. Results are in R data frames, same structure as original Excel sheets",
+          "",
+          "## No dependencies required",
+          "The script uses only base R. No packages to install."
+        ), file.path(project_dir, "README.txt"))
+
+        old_wd <- setwd(tmp_dir)
+        on.exit(setwd(old_wd), add = TRUE)
+        zip(file, "excel2r_output", flags = "-r")
+      } else {
+        writeLines(result$script, file)
+      }
     }
   )
 

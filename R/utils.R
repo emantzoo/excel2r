@@ -42,8 +42,11 @@ generate_col_names <- function(num_cols) {
 is_within_quotes <- function(formula, pos) {
   quote_positions <- gregexpr('"', formula)[[1]]
   if (quote_positions[1] == -1) return(FALSE)
-  for (i in seq(1, length(quote_positions), by = 2)) {
-    if (i + 1 > length(quote_positions)) break
+  # Only consider paired quotes; drop trailing unpaired quote
+  n_quotes <- length(quote_positions)
+  if (n_quotes %% 2 != 0) n_quotes <- n_quotes - 1
+  if (n_quotes < 2) return(FALSE)
+  for (i in seq(1, n_quotes, by = 2)) {
     start_quote <- quote_positions[i]
     end_quote <- quote_positions[i + 1]
     if (pos > start_quote && pos < end_quote) return(TRUE)

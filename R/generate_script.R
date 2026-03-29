@@ -219,12 +219,21 @@ generate_r_script <- function(excel_path, formula_data, sheet_names, sheet_dims,
   if (uses_vlookup) {
     add("# VLOOKUP equivalent")
     add("excel_vlookup <- function(lookup_val, table_range, col_idx, exact = FALSE) {")
-    add("  if (is.data.frame(table_range) || is.matrix(table_range)) {")
-    add("    idx <- match(lookup_val, table_range[, 1])")
-    add("    if (is.na(idx)) return(NA)")
-    add("    return(table_range[idx, col_idx])")
+    add("  if (!(is.data.frame(table_range) || is.matrix(table_range))) return(NA)")
+    add("  first_col <- table_range[, 1]")
+    add("  if (isTRUE(exact) || identical(exact, 0)) {")
+    add("    # Exact match")
+    add("    idx <- match(lookup_val, first_col)")
+    add("  } else {")
+    add("    # Approximate match: sorted ascending, find largest <= lookup_val")
+    add("    idx <- match(lookup_val, first_col)")
+    add("    if (is.na(idx)) {")
+    add("      candidates <- which(first_col <= lookup_val)")
+    add("      idx <- if (length(candidates) > 0) max(candidates) else NA")
+    add("    }")
     add("  }")
-    add("  NA")
+    add("  if (is.na(idx)) return(NA)")
+    add("  table_range[idx, col_idx]")
     add("}")
     blank()
   }
@@ -424,6 +433,25 @@ generate_r_script <- function(excel_path, formula_data, sheet_names, sheet_dims,
 }
 
 
+#' Resolve which sheet a range reference targets
+#' @param rng Range string, possibly with sheet prefix like 'Sheet1'!A:A or Sheet1!A:A
+#' @param default_sheet The sheet the formula lives in (fallback)
+#' @param sheet_names All known sheet names
+#' @return The target sheet name (original, not sanitized)
+resolve_range_sheet <- function(rng, default_sheet, sheet_names) {
+  if (!grepl("!", rng)) return(default_sheet)
+  sheet_part <- strsplit(rng, "!")[[1]][1]
+  # Strip quotes
+  sheet_part <- gsub("^'+|'+$", "", sheet_part)
+  # Match against known sheet names
+  if (sheet_part %in% sheet_names) return(sheet_part)
+  # Try sanitized match
+  for (s in sheet_names) {
+    if (sanitize_sheet_name(s) == sanitize_sheet_name(sheet_part)) return(s)
+  }
+  default_sheet
+}
+
 #' Identify which columns are used as criteria in SUMIF/SUMIFS formulas
 #' These must be kept as character type when loading data
 identify_criteria_columns <- function(formula_data, sheet_names) {
@@ -450,26 +478,32 @@ identify_criteria_columns <- function(formula_data, sheet_names) {
     if (grepl("^SUMIF\\(", formula, ignore.case = TRUE) && length(valid_ranges) >= 1) {
       # SUMIF(range, criteria, sum_range) — range is the criteria range
       rng <- valid_ranges[1]
-      if (grepl("!", rng)) rng <- strsplit(rng, "!")[[1]][2]
-      col <- gsub("[0-9$:]+", "", strsplit(rng, ":")[[1]][1])
-      criteria_cols[[sheet]] <- unique(c(criteria_cols[[sheet]], col))
+      target_sheet <- resolve_range_sheet(rng, sheet, sheet_names)
+      rng_cell <- if (grepl("!", rng)) strsplit(rng, "!")[[1]][2] else rng
+      col <- gsub("[0-9$:]+", "", strsplit(rng_cell, ":")[[1]][1])
+      if (target_sheet %in% sheet_names) {
+        criteria_cols[[target_sheet]] <- unique(c(criteria_cols[[target_sheet]], col))
+      }
     } else if (grepl("^SUMIFS\\(", formula, ignore.case = TRUE) && length(valid_ranges) > 1) {
       # SUMIFS(sum_range, crit_range1, crit1, crit_range2, crit2, ...)
-      # Criteria ranges are at positions 2, 4, 6, etc. in args
-      # But from regex we get all ranges — skip the first (sum_range), rest are criteria
       for (j in 2:length(valid_ranges)) {
         rng <- valid_ranges[j]
-        if (grepl("!", rng)) rng <- strsplit(rng, "!")[[1]][2]
-        col <- gsub("[0-9$:]+", "", strsplit(rng, ":")[[1]][1])
-        criteria_cols[[sheet]] <- unique(c(criteria_cols[[sheet]], col))
+        target_sheet <- resolve_range_sheet(rng, sheet, sheet_names)
+        rng_cell <- if (grepl("!", rng)) strsplit(rng, "!")[[1]][2] else rng
+        col <- gsub("[0-9$:]+", "", strsplit(rng_cell, ":")[[1]][1])
+        if (target_sheet %in% sheet_names) {
+          criteria_cols[[target_sheet]] <- unique(c(criteria_cols[[target_sheet]], col))
+        }
       }
     } else if (grepl("^COUNTIFS?\\(", formula, ignore.case = TRUE)) {
-      # COUNTIF(range, criteria) or COUNTIFS(range1, crit1, range2, crit2, ...)
       for (j in seq_along(valid_ranges)) {
         rng <- valid_ranges[j]
-        if (grepl("!", rng)) rng <- strsplit(rng, "!")[[1]][2]
-        col <- gsub("[0-9$:]+", "", strsplit(rng, ":")[[1]][1])
-        criteria_cols[[sheet]] <- unique(c(criteria_cols[[sheet]], col))
+        target_sheet <- resolve_range_sheet(rng, sheet, sheet_names)
+        rng_cell <- if (grepl("!", rng)) strsplit(rng, "!")[[1]][2] else rng
+        col <- gsub("[0-9$:]+", "", strsplit(rng_cell, ":")[[1]][1])
+        if (target_sheet %in% sheet_names) {
+          criteria_cols[[target_sheet]] <- unique(c(criteria_cols[[target_sheet]], col))
+        }
       }
     }
   }

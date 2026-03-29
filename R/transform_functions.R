@@ -59,7 +59,8 @@ excel_function_registry <- list(
 
   # --- Counting ---
   "COUNT" = function(args) {
-    sprintf("sum(!is.na(%s) & is.numeric(%s))", args[1], args[1])
+    # COUNT counts numeric (non-NA) values; use per-element check, not is.numeric() on whole vector
+    sprintf("sum(!is.na(%s) & suppressWarnings(!is.na(as.numeric(%s))))", args[1], args[1])
   },
 
   "COUNTA" = function(args) {
@@ -97,11 +98,10 @@ excel_function_registry <- list(
   },
 
   "IFERROR" = function(args) {
-    if (length(args) >= 2) {
-      sprintf("tryCatch(%s, error = function(e) %s)", args[1], args[2])
-    } else {
-      sprintf("tryCatch(%s, error = function(e) NA)", args[1])
-    }
+    fallback <- if (length(args) >= 2) args[2] else "NA"
+    # Catch R errors, NA, NaN, and Inf (matches Excel #N/A, #DIV/0!, #VALUE!, etc.)
+    sprintf("tryCatch({ .iferr_val <- (%s); if (is.na(.iferr_val) || is.nan(.iferr_val) || is.infinite(.iferr_val)) %s else .iferr_val }, error = function(e) %s)",
+            args[1], fallback, fallback)
   },
 
   "IFNA" = function(args) {
@@ -281,7 +281,29 @@ excel_function_registry <- list(
   },
 
   "TEXT" = function(args) {
-    sprintf("format(%s)", args[1])
+    if (length(args) >= 2) {
+      # Map common Excel format strings to R format specs
+      fmt <- gsub('"', '', args[2])
+      r_fmt <- switch(fmt,
+        "0" = "%.0f",
+        "0.0" = "%.1f",
+        "0.00" = "%.2f",
+        "0.000" = "%.3f",
+        "0%" = , "0.0%" = , "0.00%" = fmt,  # percent handled below
+        "#,##0" = "%.0f",
+        "#,##0.00" = "%.2f",
+        NULL  # unrecognized
+      )
+      if (grepl("%", fmt)) {
+        sprintf("paste0(round(%s * 100, 1), '%%')", args[1])
+      } else if (!is.null(r_fmt)) {
+        sprintf("sprintf('%s', %s)", r_fmt, args[1])
+      } else {
+        sprintf("format(%s)", args[1])
+      }
+    } else {
+      sprintf("format(%s)", args[1])
+    }
   },
 
   "VALUE" = function(args) {
@@ -330,8 +352,15 @@ excel_function_registry <- list(
     if (length(args) == 0 || args[1] == "") {
       "NA  # ROW() requires context"
     } else {
-      # Extract row from cell reference
-      sprintf("as.numeric(gsub('[^0-9]', '', '%s'))", args[1])
+      # Args are already transformed: Sheet$Col[Row] -> extract row number from [Row]
+      ref <- args[1]
+      m <- regmatches(ref, regexpr("\\[([0-9]+)\\]", ref))
+      if (length(m) > 0 && nchar(m) > 0) {
+        gsub("[\\[\\]]", "", m)
+      } else {
+        # Fallback: try to extract from original-style ref
+        sprintf("as.numeric(gsub('[^0-9]', '', '%s'))", ref)
+      }
     }
   },
 
@@ -339,7 +368,16 @@ excel_function_registry <- list(
     if (length(args) == 0 || args[1] == "") {
       "NA  # COLUMN() requires context"
     } else {
-      sprintf("col_letter_to_index(gsub('[0-9$]', '', '%s'))", args[1])
+      # Args are already transformed: Sheet$Col[Row] -> extract col letter from $Col[
+      ref <- args[1]
+      m <- regmatches(ref, regexpr("\\$([A-Z]+)\\[", ref))
+      if (length(m) > 0 && nchar(m) > 0) {
+        col_letter <- gsub("[\\$\\[]", "", m)
+        sprintf("col_letter_to_index('%s')", col_letter)
+      } else {
+        # Fallback: try to extract from original-style ref
+        sprintf("col_letter_to_index(gsub('[0-9$]', '', '%s'))", ref)
+      }
     }
   }
 )

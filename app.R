@@ -286,6 +286,7 @@ server <- function(input, output, session) {
   })
 
   # --- Regenerate script reactively when config changes ---
+  # Uses cached processing results; only regenerates the script text
   generated_script <- reactive({
     req(rv$results, rv$file_path)
 
@@ -294,13 +295,32 @@ server <- function(input, output, session) {
 
     excel_path <- if (nchar(input$opt_filepath) > 0) input$opt_filepath else input$upload$name
 
-    process_excel_file(
-      file_path = rv$file_path,
-      sheet_names = selected,
-      wrap_trycatch = input$opt_trycatch,
-      include_comments = input$opt_comments,
-      excel_path_in_script = excel_path
+    # Filter cached report for selected sheets
+    report <- rv$results$report
+    if (!is.null(selected)) {
+      report <- report[report$Sheet %in% selected, ]
+    }
+
+    # Detect sheet names and dims from cache
+    all_sheets <- if (!is.null(selected)) selected else readxl::excel_sheets(rv$file_path)
+    sheet_dims <- detect_sheet_dimensions(rv$file_path, all_sheets)
+    used_functions <- detect_used_functions(report[, c("Sheet", "Cell", "Row", "Col", "Formula")])
+    exec_order <- determine_execution_order(
+      report[, c("Sheet", "Cell", "Row", "Col", "Formula")]
     )
+
+    script <- generate_r_script(
+      excel_path = excel_path,
+      formula_data = report,
+      sheet_names = all_sheets,
+      sheet_dims = sheet_dims,
+      exec_order = exec_order,
+      used_functions = used_functions,
+      wrap_trycatch = input$opt_trycatch,
+      include_comments = input$opt_comments
+    )
+
+    list(script = script, report = report, warnings = rv$results$warnings)
   })
 
   # --- Script Preview ---

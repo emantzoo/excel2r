@@ -40,6 +40,8 @@ split_function_args <- function(content) {
   current <- ""
   n <- nchar(content)
 
+  if (n == 0) return(character(0))
+
   for (i in 1:n) {
     ch <- substr(content, i, i)
     if (ch == '"') {
@@ -75,7 +77,8 @@ split_function_args <- function(content) {
 find_function_calls <- function(formula) {
   # Pattern: function name immediately followed by (
   # Function names: one or more uppercase letters/digits/dots, starting with letter
-  matches <- gregexpr("[A-Z][A-Z0-9.]*\\(", formula, perl = TRUE)[[1]]
+  # Negative lookbehind prevents matching mid-word (e.g. "Catch" in "tryCatch")
+  matches <- gregexpr("(?<![A-Za-z._])[A-Z][A-Za-z0-9.]*\\(", formula, perl = TRUE)[[1]]
 
   if (matches[1] == -1) return(list())
 
@@ -136,7 +139,7 @@ extract_ranges <- function(formula) {
       while (left_pos > 0) {
         char <- substr(formula, left_pos, left_pos)
         if (char %in% c(",", "(", ")", ";", "-", "+", " ")) break
-        # Allow sheet!ref — don't break on ! if preceded by '
+        # Allow sheet!ref — include the sheet prefix
         if (char == "!") {
           if (left_pos > 1 && substr(formula, left_pos - 1, left_pos - 1) == "'") {
             # Part of 'Sheet Name'! — scan further left to include the quoted sheet
@@ -148,7 +151,14 @@ extract_ranges <- function(formula) {
             # left_pos is now at the opening quote
             next
           }
-          break
+          # Unquoted sheet ref like Sheet1!A1:B10 — continue scanning left
+          left_pos <- left_pos - 1
+          while (left_pos > 0) {
+            ch2 <- substr(formula, left_pos, left_pos)
+            if (ch2 %in% c(",", "(", ")", ";", "-", "+", " ")) break
+            left_pos <- left_pos - 1
+          }
+          next
         }
         left_pos <- left_pos - 1
       }

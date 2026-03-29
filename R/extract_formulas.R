@@ -72,7 +72,7 @@ detect_sheet_dimensions <- function(file_path, sheet_names = NULL) {
 detect_used_functions <- function(formula_data) {
   # Match function names: word chars followed by (
   all_funcs <- unlist(regmatches(formula_data$Formula,
-                                  gregexpr("[A-Z][A-Z0-9.]+(?=\\()", formula_data$Formula, perl = TRUE)))
+                                  gregexpr("[A-Z][A-Z0-9.]*(?=\\()", formula_data$Formula, perl = TRUE, ignore.case = TRUE)))
   if (length(all_funcs) == 0) return(integer(0))
   sort(table(all_funcs), decreasing = TRUE)
 }

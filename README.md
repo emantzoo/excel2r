@@ -1,5 +1,8 @@
 # excel2r
 
+![excel2r](https://raw.githubusercontent.com/emantzoo/emantzoo.github.io/master/images/excel2r.jpg)
+
+
 **Migrate your entire Excel workbook to R -- data and logic -- in one step.**
 
 Upload any multi-tab `.xlsx` workbook and get a fully standalone package: tidy CSV data files and an R script (base R only, zero dependencies) that recreates every formula without needing Excel at runtime. Edit the CSVs, rerun the script, get updated results. Built-in verification compares every computed value against Excel's cached results before you commit to the migration.

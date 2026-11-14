@@ -21,6 +21,14 @@ test_that("scan_references handles unquoted, quoted and external sheet prefixes"
   expect_equal(c(r$c1, r$r1), c(22L, 18L))
 })
 
+test_that("non-ASCII sheet names are scanned and get their text copy", {
+  r <- scan_references("Πίνακας1!A1+'SBR DATA (Πίνακας 4)'!B:B")
+  expect_equal(r$sheet, c("Πίνακας1", "SBR DATA (Πίνακας 4)"))
+  .excel2r_state$shadow <- list(SBR_DATA_Πίνακας_4 = "B")
+  on.exit(.excel2r_state$shadow <- NULL)
+  expect_equal(to_text_shadow("SBR_DATA_Πίνακας_4$B[1:40]"), "SBR_DATA_Πίνακας_4__txt$B[1:40]")
+})
+
 test_that("unquoted cross-sheet single refs translate to valid R", {
   out <- transform_cell_references("T6_MAKE!AZ8+SUM(T1_Final!J36)", "T4_Main")
   expect_equal(out, "T6_MAKE$AZ[8]+SUM(T1_Final$J[36])")

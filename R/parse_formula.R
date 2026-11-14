@@ -182,10 +182,12 @@ extract_ranges <- function(formula) {
 # The lookbehind stops matches inside names (T6_MAKE, LOG10, Sheet1!A1 -> A1);
 # the lookahead stops matches on function names (LOG10() and sheet names (T6!).
 .ref_regex <- paste0(
-  "(?<![A-Za-z0-9_.$'!\\]])",
-  "(?:'((?:[^']|'')+)'!|([A-Za-z_][A-Za-z0-9_.]*)!)?",
+  # \p{L}/\p{N}: any Unicode letter/digit (unquoted sheet names such as
+  # Πίνακας1!A1 are as valid as Sheet1!A1)
+  "(?<![\\p{L}\\p{N}_.$'!\\]])",
+  "(?:'((?:[^']|'')+)'!|([\\p{L}_][\\p{L}\\p{N}_.]*)!)?",
   "(\\$?[A-Z]{1,3}\\$?[0-9]+(?::\\$?[A-Z]{1,3}\\$?[0-9]+)?|\\$?[A-Z]{1,3}:\\$?[A-Z]{1,3})",
-  "(?![A-Za-z0-9_(!.])"
+  "(?![\\p{L}\\p{N}_(!.])"
 )
 
 #' Find every cell/range reference in a formula

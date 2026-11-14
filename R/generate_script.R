@@ -615,7 +615,9 @@ generate_r_script <- function(excel_path, formula_data, sheet_names, sheet_dims,
         for (cl in unique(f_letters)) {
           rr <- sort(unique(f_rownum[f_letters == cl]))
           add(s_sanitized, "$", cl, "[", compact_int_vector(rr), "] <- NA")
-          if (has_shadow && cl %in% sheet_crit_cols) {
+          # Clear the text copy too, in every column: stale cached results
+          # (e.g. "#DIV/0!" in a template) must never be read back as text
+          if (has_shadow) {
             add(s_sanitized, "__txt$", cl, "[", compact_int_vector(rr), "] <- NA")
           }
         }
@@ -777,6 +779,12 @@ text_columns <- function(formula_data, sheet_names) {
   if (nrow(refs) == 0) return(cols)
   tgt_sheet <- formula_data$Sheet[refs$i]
   tgt_col <- gsub("[0-9$]", "", toupper(formula_data$Cell[refs$i]))
+  # Every pure reference returns the referenced cell as-is, text included
+  # (labels, codes, confidentiality markers such as "c"): its target column
+  # always gets a text copy
+  for (k in seq_along(tgt_sheet)) {
+    cols[[tgt_sheet[k]]] <- unique(c(cols[[tgt_sheet[k]]], tgt_col[k]))
+  }
   repeat {
     in_text <- mapply(function(s, cl) cl %in% cols[[s]], tgt_sheet, tgt_col)
     add <- refs[in_text & !mapply(function(s, cl) cl %in% cols[[s]], refs$src_sheet, refs$src_col), ]

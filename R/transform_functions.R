@@ -16,13 +16,15 @@ to_text_shadow <- function(code) {
   shadow <- .excel2r_state$shadow
   if (is.null(shadow)) return(code)
   code <- trimws(code)
-  # Sheet$COL[...]
-  m <- regmatches(code, regexec("^([A-Za-z0-9_]+)\\$([A-Z]+)\\[([^]]+)\\]$", code))[[1]]
+  # Sheet$COL[...]  -- the sheet variable may contain any letters (e.g.
+  # Greek: SBR_DATA_Πίνακας_4), so match "anything but $ [ ] ( ) , space"
+  sheet_var <- "([^][$(), ]+)"
+  m <- regmatches(code, regexec(paste0("^", sheet_var, "\\$([A-Z]+)\\[([^]]+)\\]$"), code))[[1]]
   if (length(m) == 4 && m[3] %in% shadow[[m[2]]]) {
     return(sprintf("%s__txt$%s[%s]", m[2], m[3], m[4]))
   }
   # unlist(Sheet[rows, c("B", "C")])
-  m <- regmatches(code, regexec("^unlist\\(([A-Za-z0-9_]+)\\[(.+), c\\((.+)\\)\\]\\)$", code))[[1]]
+  m <- regmatches(code, regexec(paste0("^unlist\\(", sheet_var, "\\[(.+), c\\((.+)\\)\\]\\)$"), code))[[1]]
   if (length(m) == 4) {
     cols <- gsub('"', "", trimws(strsplit(m[4], ",")[[1]]))
     if (length(cols) && all(cols %in% shadow[[m[2]]])) {

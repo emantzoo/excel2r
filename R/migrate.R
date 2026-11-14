@@ -158,23 +158,19 @@ process <- function(file_path,
 #' View(v$mismatches)
 #' }
 verify <- function(file_path, result) {
-  # If result was generated in CSV mode, regenerate Excel-mode for verification
-  if (!grepl("read_xlsx", result$script)) {
-    excel_result <- process_excel_file(
-      file_path = file_path,
-      wrap_trycatch = TRUE,
-      include_comments = FALSE,
-      data_source = "excel",
-      excel_path_in_script = file_path
-    )
-    script_text <- excel_result$script
-    report <- excel_result$report
-  } else {
-    script_text <- result$script
-    report <- result$report
-  }
+  # Always verify with an Excel-mode script that points at the full path:
+  # a CSV-mode script has no workbook to compare against, and an Excel-mode
+  # script from process() embeds only the basename, which fails unless the
+  # working directory happens to hold the file.
+  excel_result <- process_excel_file(
+    file_path = file_path,
+    wrap_trycatch = TRUE,
+    include_comments = FALSE,
+    data_source = "excel",
+    excel_path_in_script = normalizePath(file_path, winslash = "/", mustWork = TRUE)
+  )
 
-  verify_against_excel(file_path, report, script_text)
+  verify_against_excel(file_path, excel_result$report, excel_result$script)
 }
 
 #' List supported Excel functions

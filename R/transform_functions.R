@@ -2,6 +2,48 @@
 # transform_functions.R -- Excel function -> R code registry
 # =============================================================================
 
+# Transform-time state. `shadow` maps a sanitized sheet name to the columns
+# that have a text copy (`<Sheet>__txt`), i.e. columns used as *IF criteria.
+# Set by process_excel_file() for the duration of a transform.
+.excel2r_state <- new.env(parent = emptyenv())
+
+#' Point a translated range/cell at the text copy of its sheet when every
+#' column it touches has one. Criteria must see the original text (codes such
+#' as "1.a"), which the numeric sheet frames turn into 0.
+#' @keywords internal
+#' @noRd
+to_text_shadow <- function(code) {
+  shadow <- .excel2r_state$shadow
+  if (is.null(shadow)) return(code)
+  code <- trimws(code)
+  # Sheet$COL[...]  -- the sheet variable may contain any letters (e.g.
+  # Greek: SBR_DATA_Πίνακας_4), so match "anything but $ [ ] ( ) , space"
+  sheet_var <- "([^][$(), ]+)"
+  m <- regmatches(code, regexec(paste0("^", sheet_var, "\\$([A-Z]+)\\[([^]]+)\\]$"), code))[[1]]
+  if (length(m) == 4 && m[3] %in% shadow[[m[2]]]) {
+    return(sprintf("%s__txt$%s[%s]", m[2], m[3], m[4]))
+  }
+  # unlist(Sheet[rows, c("B", "C")])
+  m <- regmatches(code, regexec(paste0("^unlist\\(", sheet_var, "\\[(.+), c\\((.+)\\)\\]\\)$"), code))[[1]]
+  if (length(m) == 4) {
+    cols <- gsub('"', "", trimws(strsplit(m[4], ",")[[1]]))
+    if (length(cols) && all(cols %in% shadow[[m[2]]])) {
+      return(sprintf("unlist(%s__txt[%s, c(%s)])", m[2], m[3], m[4]))
+    }
+  }
+  code
+}
+
+# Rewrite the criteria-range and criterion arguments of a *IF/*IFS call
+# (implicit intersection of criteria is applied earlier, on the formula
+# text: see rewrite_implicit_intersection)
+shadow_criteria_args <- function(args, ranges, crits) {
+  for (j in c(ranges, crits)) {
+    if (j <= length(args)) args[j] <- to_text_shadow(args[j])
+  }
+  args
+}
+
 #' @keywords internal
 excel_function_registry <- list(
 
@@ -110,27 +152,38 @@ excel_function_registry <- list(
   },
 
   # --- Conditional Aggregation (using ExcelFunctionsR) ---
+  # Criteria ranges and criterion cells read the text copy of their sheet
+  # (see to_text_shadow); sum/average ranges stay numeric.
   "SUMIF" = function(args) {
+    args <- shadow_criteria_args(args, 1L, 2L)
     sprintf("SUMIF(%s)", paste(args, collapse = ", "))
   },
 
   "SUMIFS" = function(args) {
+    n <- length(args)
+    args <- shadow_criteria_args(args, seq(2L, n, by = 2L), seq(3L, n, by = 2L))
     sprintf("SUMIFS(%s)", paste(args, collapse = ", "))
   },
 
   "COUNTIF" = function(args) {
+    args <- shadow_criteria_args(args, 1L, 2L)
     sprintf("COUNTIF(%s)", paste(args, collapse = ", "))
   },
 
   "COUNTIFS" = function(args) {
+    n <- length(args)
+    args <- shadow_criteria_args(args, seq(1L, n, by = 2L), seq(2L, n, by = 2L))
     sprintf("COUNTIFS(%s)", paste(args, collapse = ", "))
   },
 
   "AVERAGEIF" = function(args) {
+    args <- shadow_criteria_args(args, 1L, 2L)
     sprintf("AVERAGEIF(%s)", paste(args, collapse = ", "))
   },
 
   "AVERAGEIFS" = function(args) {
+    n <- length(args)
+    args <- shadow_criteria_args(args, seq(2L, n, by = 2L), seq(3L, n, by = 2L))
     sprintf("AVERAGEIFS(%s)", paste(args, collapse = ", "))
   },
 
@@ -415,31 +468,39 @@ transform_function_call <- function(func_name, args) {
 #' @keywords internal
 #' @noRd
 transform_all_functions <- function(formula) {
+  # Single recursive pass: translate each outermost call's arguments first,
+  # then the call itself. (The previous loop re-picked the smallest call each
+  # iteration; translated SUMIF/SUMIFS/COUNTIF keep their upper-case names,
+  # so the same call was re-translated up to 50 times and any function
+  # around it -- e.g. the SUM in SUM(SUMIF(...)) -- was never translated.)
   warnings <- character(0)
-  result <- formula
-  max_iterations <- 50  # safety limit for deeply nested formulas
 
-  for (iter in 1:max_iterations) {
-    calls <- find_function_calls(result)
-    if (length(calls) == 0) break
-
-    # Find innermost calls first (those whose args contain no function calls)
-    # Since find_function_calls returns right-to-left, process them all
-    # but pick the one with the smallest span (most nested)
-    calls <- calls[order(sapply(calls, function(x) nchar(x$full_match)))]
-
-    # Transform the smallest (most inner) call
-    call <- calls[[1]]
-    args <- split_function_args(call$args_str)
-    transformed <- transform_function_call(call$name, args)
-
-    if (transformed$status == "unsupported") {
-      warnings <- c(warnings, sprintf("Unsupported function: %s", call$name))
+  transform_expr <- function(s, depth = 0L) {
+    if (depth > 50L) return(s)
+    calls <- find_function_calls(s)
+    if (length(calls) == 0) return(s)
+    starts <- vapply(calls, function(x) x$start, numeric(1))
+    ends <- vapply(calls, function(x) x$close_paren, numeric(1))
+    outer <- vapply(seq_along(calls), function(k) {
+      !any(starts < starts[k] & ends > ends[k])
+    }, logical(1))
+    calls <- calls[outer]
+    calls <- calls[order(vapply(calls, function(x) x$start, numeric(1)), decreasing = TRUE)]
+    for (call in calls) {
+      args <- split_function_args(call$args_str)
+      if (length(args)) args <- vapply(args, transform_expr, character(1), depth = depth + 1L,
+                                       USE.NAMES = FALSE)
+      # An empty argument -- SUM(A1,B1,) or IF(x,,y) -- is 0 in Excel
+      args[!nzchar(trimws(args))] <- "0"
+      transformed <- transform_function_call(call$name, args)
+      if (transformed$status == "unsupported") {
+        warnings <<- c(warnings, sprintf("Unsupported function: %s", call$name))
+      }
+      s <- paste0(substr(s, 1, call$start - 1), transformed$code,
+                  substr(s, call$close_paren + 1, nchar(s)))
     }
-
-    # Replace in formula
-    result <- sub(call$full_match, transformed$code, result, fixed = TRUE)
+    s
   }
 
-  list(formula = result, warnings = warnings)
+  list(formula = transform_expr(formula), warnings = unique(warnings))
 }

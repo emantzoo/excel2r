@@ -7,29 +7,35 @@
 verify_against_excel <- function(file_path, report, script_text) {
   # Run the generated script in an isolated environment
   env <- new.env(parent = globalenv())
-  tryCatch({
-    # Write script to temp file and source it
-    tmp <- tempfile(fileext = ".R")
-    on.exit(unlink(tmp), add = TRUE)
-    writeLines(script_text, tmp)
+  tmp <- tempfile(fileext = ".R")
+  on.exit(unlink(tmp), add = TRUE)
+  writeLines(script_text, tmp)
+  run_error <- tryCatch({
     source(tmp, local = env)
-  }, error = function(e) {
+    NULL
+  }, error = function(e) conditionMessage(e))
+  if (!is.null(run_error)) {
     return(list(
       summary = list(total = 0, matches = 0, value_mismatches = 0,
                      fp_precision = 0, na_mismatches = 0,
-                     error = paste("Script execution failed:", e$message)),
+                     error = paste("Script execution failed:", run_error)),
       mismatches = data.frame(Sheet = character(), Cell = character(),
                               Formula = character(), R_Value = character(),
                               Excel_Value = character(), Category = character(),
                               stringsAsFactors = FALSE)
     ))
-  })
+  }
 
-  # Read Excel values via tidyxl
+  # Read Excel values via tidyxl; index by sheet/row/col for O(1) lookup
   all_cells <- tidyxl::xlsx_cells(file_path)
+  cell_keys <- paste(all_cells$sheet, all_cells$row, all_cells$col, sep = "\r")
 
   # Only compare formulas with status "ok"
   formulas <- report[tolower(report$Status) == "ok", ]
+  f_letters <- toupper(gsub("[0-9$]+", "", formulas$Cell))
+  f_rows <- as.integer(gsub("[^0-9]", "", formulas$Cell))
+  f_cols <- vapply(f_letters, col_letter_to_index, numeric(1))
+  f_hits <- match(paste(formulas$Sheet, f_rows, f_cols, sep = "\r"), cell_keys)
 
   total <- 0L
   matches <- 0L
@@ -64,9 +70,8 @@ verify_against_excel <- function(file_path, report, script_text) {
 
     # Get Excel value from tidyxl
     col_idx <- col_letter_to_index(col_letter)
-    excel_cell <- all_cells[all_cells$sheet == sheet &
-                              all_cells$row == row_num &
-                              all_cells$col == col_idx, ]
+    hit <- f_hits[i]
+    excel_cell <- all_cells[if (is.na(hit)) integer(0) else hit, ]
 
     excel_value <- NA
     excel_is_error <- FALSE
@@ -132,13 +137,14 @@ verify_against_excel <- function(file_path, report, script_text) {
       )
 
     } else if (is.numeric(r_value) && is.numeric(excel_value)) {
+      # Relative tolerance: an absolute 1e-4 hid real errors in small values
+      # (ratios, shares) and flagged rounding noise in large ones
       diff <- abs(r_value - excel_value)
-      if (diff < 1e-4) {
-        if (diff > 1e-6) {
-          fp_precision <- fp_precision + 1L
-        } else {
-          matches <- matches + 1L
-        }
+      scale <- max(abs(r_value), abs(excel_value))
+      if (diff <= 1e-9 * max(1, scale)) {
+        matches <- matches + 1L
+      } else if (diff <= 1e-6 * scale) {
+        fp_precision <- fp_precision + 1L
       } else {
         value_mismatches <- value_mismatches + 1L
         mismatch_rows[[length(mismatch_rows) + 1]] <- data.frame(

@@ -1,137 +1,149 @@
 # =============================================================================
 # dependency_order.R -- Kahn's topological sort for formula execution ordering
 # =============================================================================
+#
+# Ordering is done over ALL formula cells of the workbook at once (one global
+# graph), the way Excel's calc chain works. A sheet-first order cannot handle
+# workbooks whose sheets reference each other in a loop even though the cells
+# do not (Sheet A!X1 -> Sheet B!Y1 -> Sheet A!Z1), and it silently produced a
+# wrong order in that case.
+#
+# Range dependencies are resolved against an index of formula cells per sheet
+# (vectorised, cached per distinct range) instead of expanding every range
+# cell by cell, so workbooks with tens of thousands of SUMIF formulas over
+# long ranges are ordered in seconds.
+# =============================================================================
 
 #' @keywords internal
 #' @noRd
-determine_execution_order <- function(formula_data) {
+determine_execution_order <- function(formula_data, all_sheets = NULL) {
   warnings <- character(0)
-
-  # --- Phase 1: Sheet-level ordering ---
-
+  n <- nrow(formula_data)
   sheets <- unique(formula_data$Sheet)
 
-  # Extract cross-sheet dependencies from raw formulas
-  extract_cross_sheets <- function(formula) {
-    matches <- regmatches(formula, gregexpr("'[^']+'!", formula))[[1]]
-    if (length(matches) == 0) return(character(0))
-    unique(gsub("'|!", "", matches))
+  if (n == 0) {
+    return(list(sheet_order = character(0), cell_orders = list(),
+                global_order = integer(0), warnings = warnings))
   }
 
-  # Build sheet dependency graph
+  # --- Index formula cells by sheet, column, row ---
+  addr <- toupper(gsub("$", "", formula_data$Cell, fixed = TRUE))
+  f_col <- if (!is.null(formula_data$Col)) as.integer(formula_data$Col) else
+    as.integer(vapply(gsub("[0-9]", "", addr), col_letter_to_index, numeric(1)))
+  f_row <- if (!is.null(formula_data$Row)) as.integer(formula_data$Row) else
+    as.integer(gsub("[^0-9]", "", addr))
+
+  by_sheet <- split(seq_len(n), factor(formula_data$Sheet, levels = sheets))
+  cell_index <- new.env(hash = TRUE, parent = emptyenv(), size = n)
+  for (i in seq_len(n)) {
+    assign(paste(formula_data$Sheet[i], f_col[i], f_row[i]), i, envir = cell_index)
+  }
+
+  # Excel sheet names are case-insensitive
+  known <- unique(c(sheets, all_sheets))
+  sheet_lookup <- setNames(known, toupper(known))
+
+  range_cache <- new.env(hash = TRUE, parent = emptyenv())
+
+  resolve_ref <- function(s, c1, r1, c2, r2) {
+    if (!is.na(r1) && r1 == r2 && c1 == c2) {
+      hit <- cell_index[[paste(s, c1, r1)]]
+      return(if (is.null(hit)) integer(0) else hit)
+    }
+    ck <- paste(s, c1, r1, c2, r2)
+    hit <- range_cache[[ck]]
+    if (!is.null(hit)) return(hit)
+    idx <- by_sheet[[s]]
+    if (is.null(idx) || length(idx) == 0) {
+      hit <- integer(0)
+    } else {
+      lo_c <- min(c1, c2); hi_c <- max(c1, c2)
+      sel <- f_col[idx] >= lo_c & f_col[idx] <= hi_c
+      if (!is.na(r1) && !is.na(r2)) {
+        sel <- sel & f_row[idx] >= min(r1, r2) & f_row[idx] <= max(r1, r2)
+      }
+      hit <- idx[sel]
+    }
+    assign(ck, hit, envir = range_cache)
+    hit
+  }
+
+  # --- Build the global dependency graph ---
+  # Implicit intersection first: SUMIF(D:D, $F:$F, ...) in row 11 depends
+  # on F11, not on all of column F (which creates false cycles)
+  eval_formulas <- formulas_for_evaluation(formula_data)
+  deps <- vector("list", n)
+  for (i in seq_len(n)) {
+    refs <- scan_references(eval_formulas[i])
+    if (nrow(refs) == 0) { deps[[i]] <- integer(0); next }
+    target <- ifelse(is.na(refs$sheet), formula_data$Sheet[i],
+                     unname(sheet_lookup[toupper(refs$sheet)]))
+    d <- integer(0)
+    for (k in seq_len(nrow(refs))) {
+      if (is.na(target[k])) next  # external workbook or unknown sheet
+      d <- c(d, resolve_ref(target[k], refs$c1[k], refs$r1[k], refs$c2[k], refs$r2[k]))
+    }
+    d <- unique(d)
+    deps[[i]] <- d[d != i]
+  }
+
+  # --- Kahn's algorithm on integer node ids ---
+  indeg <- lengths(deps)
+  rev_adj <- split(rep(seq_len(n), indeg), factor(unlist(deps), levels = seq_len(n)))
+  queue <- integer(n)
+  ready <- which(indeg == 0L)
+  q_tail <- length(ready)
+  queue[seq_len(q_tail)] <- ready
+  q_head <- 1L
+  while (q_head <= q_tail) {
+    v <- queue[q_head]
+    q_head <- q_head + 1L
+    w <- rev_adj[[v]]
+    if (length(w)) {
+      indeg[w] <- indeg[w] - 1L
+      newly <- w[indeg[w] == 0L]
+      if (length(newly)) {
+        queue[(q_tail + 1L):(q_tail + length(newly))] <- newly
+        q_tail <- q_tail + length(newly)
+      }
+    }
+  }
+  global_order <- queue[seq_len(q_tail)]
+
+  if (q_tail < n) {
+    stuck <- setdiff(seq_len(n), global_order)
+    warnings <- c(warnings, sprintf(
+      "Cycle detected in cell dependencies (%d cells, e.g. %s)! Those cells use original order.",
+      length(stuck),
+      paste(head(paste0(formula_data$Sheet[stuck], "!", formula_data$Cell[stuck]), 5), collapse = ", ")))
+    global_order <- c(global_order, stuck)
+  }
+
+  # --- Sheet order (for loading data and reporting) ---
+  # Topological over sheets when possible; with a sheet-level loop (legal,
+  # see header) fall back to the order in which sheets first appear in the
+  # global cell order.
   sheet_deps <- setNames(vector("list", length(sheets)), sheets)
-  for (i in seq_len(nrow(formula_data))) {
-    current_sheet <- formula_data$Sheet[i]
-    deps <- extract_cross_sheets(formula_data$Formula[i])
-    deps <- deps[deps %in% sheets & deps != current_sheet]
-    sheet_deps[[current_sheet]] <- unique(c(sheet_deps[[current_sheet]], deps))
+  for (i in seq_len(n)) {
+    if (length(deps[[i]]) == 0) next
+    ds <- unique(formula_data$Sheet[deps[[i]]])
+    s <- formula_data$Sheet[i]
+    sheet_deps[[s]] <- unique(c(sheet_deps[[s]], ds[ds != s]))
   }
-
-  # Kahn's algorithm for sheets
   sheet_order <- kahns_sort(sheets, sheet_deps)
   if (is.null(sheet_order)) {
-    warnings <- c(warnings, "Cycle detected in sheet dependencies! Using original order.")
-    sheet_order <- sheets
+    sheet_order <- unique(formula_data$Sheet[global_order])
   }
 
-  # --- Phase 2: Cell-level ordering within each sheet ---
+  # Per-sheet cell orders (subsequences of the global order), kept for
+  # callers that display order within a sheet
+  ordered_sheet <- formula_data$Sheet[global_order]
+  cell_orders <- lapply(setNames(sheets, sheets), function(s) {
+    formula_data$Cell[global_order[ordered_sheet == s]]
+  })
 
-  cell_orders <- setNames(vector("list", length(sheets)), sheets)
-
-  for (s in sheet_order) {
-    sheet_data <- formula_data[formula_data$Sheet == s, ]
-    cells <- sheet_data$Cell
-    if (length(cells) == 0) next
-
-    # Use environment for O(1) lookups
-    cell_set <- new.env(hash = TRUE, parent = emptyenv())
-    for (c in cells) cell_set[[c]] <- TRUE
-
-    # Build cell dependency graph
-    cell_deps <- setNames(vector("list", length(cells)), cells)
-
-    for (i in seq_len(nrow(sheet_data))) {
-      cell <- sheet_data$Cell[i]
-      formula <- sheet_data$Formula[i]
-
-      # Remove cross-sheet references (they're handled by sheet ordering)
-      clean_formula <- gsub("'[^']+'![A-Z$0-9:]+", "", formula)
-
-      dep_cells <- character(0)
-
-      # Extract range references
-      range_matches <- regmatches(
-        clean_formula,
-        gregexpr("([A-Z]{1,3})\\$?([0-9]+)?:([A-Z]{1,3})\\$?([0-9]+)?", clean_formula)
-      )[[1]]
-
-      for (rm in range_matches) {
-        parts <- regmatches(rm, regexec("([A-Z]{1,3})\\$?([0-9]+)?:([A-Z]{1,3})\\$?([0-9]+)?", rm))[[1]]
-        col1 <- parts[2]
-        row1_str <- parts[3]
-        col2 <- parts[4]
-        row2_str <- parts[5]
-
-        row1 <- if (row1_str == "") NA else as.numeric(row1_str)
-        row2 <- if (row2_str == "") NA else as.numeric(row2_str)
-
-        if (is.na(row1) && is.na(row2)) {
-          # Whole-column reference: depends on all formula cells in those columns
-          col1_idx <- col_letter_to_index(col1)
-          col2_idx <- col_letter_to_index(col2)
-          for (ci in col1_idx:col2_idx) {
-            col_letter <- index_to_col_letter(ci)
-            for (c in cells) {
-              pc <- parse_cell_address(c)
-              if (pc$col == col_letter && !is.null(cell_set[[c]])) {
-                dep_cells <- c(dep_cells, c)
-              }
-            }
-          }
-        } else if (!is.na(row1) && !is.na(row2)) {
-          # Explicit range
-          col1_idx <- col_letter_to_index(col1)
-          col2_idx <- col_letter_to_index(col2)
-          for (ci in col1_idx:col2_idx) {
-            col_letter <- index_to_col_letter(ci)
-            for (r in row1:row2) {
-              ref_cell <- paste0(col_letter, r)
-              if (!is.null(cell_set[[ref_cell]])) {
-                dep_cells <- c(dep_cells, ref_cell)
-              }
-            }
-          }
-        }
-      }
-
-      # Extract single cell references
-      single_matches <- regmatches(
-        clean_formula,
-        gregexpr("[A-Z]{1,3}\\$?[0-9]+", clean_formula)
-      )[[1]]
-
-      for (sm in single_matches) {
-        sm_clean <- gsub("\\$", "", sm)
-        if (!is.null(cell_set[[sm_clean]])) {
-          dep_cells <- c(dep_cells, sm_clean)
-        }
-      }
-
-      # Remove self-dependency
-      dep_cells <- unique(dep_cells[dep_cells != cell])
-      cell_deps[[cell]] <- dep_cells
-    }
-
-    # Kahn's algorithm for cells
-    cell_order <- kahns_sort(cells, cell_deps)
-    if (is.null(cell_order)) {
-      warnings <- c(warnings, sprintf("Cycle detected in cell dependencies for sheet '%s'! Using original order.", s))
-      cell_order <- cells
-    }
-    cell_orders[[s]] <- cell_order
-  }
-
-  list(sheet_order = sheet_order, cell_orders = cell_orders, warnings = warnings)
+  list(sheet_order = sheet_order, cell_orders = cell_orders,
+       global_order = global_order, warnings = warnings)
 }
 
 #' @keywords internal

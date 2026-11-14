@@ -96,3 +96,17 @@ expand_range_to_cells <- function(range_str) {
   }
   cells
 }
+
+#' Render sorted integers compactly as R code, e.g. c(1:5, 8, 10:12)
+#' @keywords internal
+#' @noRd
+compact_int_vector <- function(x) {
+  x <- sort(unique(as.integer(x)))
+  if (length(x) == 0) return("integer(0)")
+  breaks <- c(0L, which(diff(x) != 1L), length(x))
+  parts <- vapply(seq_len(length(breaks) - 1L), function(k) {
+    a <- x[breaks[k] + 1L]; b <- x[breaks[k + 1L]]
+    if (a == b) as.character(a) else paste0(a, ":", b)
+  }, character(1))
+  if (length(parts) == 1) parts else paste0("c(", paste(parts, collapse = ", "), ")")
+}

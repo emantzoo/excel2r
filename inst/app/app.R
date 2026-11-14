@@ -359,7 +359,7 @@ server <- function(input, output, session) {
     all_sheets <- if (!is.null(selected)) selected else readxl::excel_sheets(rv$file_path)
     sheet_dims <- detect_sheet_dimensions(rv$file_path, all_sheets)
     used_functions <- detect_used_functions(report[, c("Sheet", "Cell", "Row", "Col", "Formula")])
-    exec_order <- determine_execution_order(
+    exec_order <- determine_execution_order(all_sheets = all_sheets,
       report[, c("Sheet", "Cell", "Row", "Col", "Formula")]
     )
 

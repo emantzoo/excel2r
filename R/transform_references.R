@@ -95,53 +95,23 @@ transform_range <- function(ref, current_sheet, sheet_dims = NULL) {
 #' @keywords internal
 #' @noRd
 transform_cell_references <- function(formula, sheet, sheet_dims = NULL) {
-  # Step 1: Extract ranges and replace with placeholders
-  extracted <- extract_ranges(formula)
-  placeholder_formula <- extracted$placeholder_formula
-  placeholder_map <- extracted$placeholder_map
-
-  # Step 2: Transform single cell references (not inside placeholders)
-  # Pattern matches: optional 'Sheet Name'! followed by $?COL$?ROW
-  single_ref_pattern <- "'[^']+'!\\$?[A-Z]{1,3}\\$?[0-9]+|\\$?[A-Z]{1,3}\\$?[0-9]+"
-  single_refs <- unique(unlist(regmatches(
-    placeholder_formula,
-    gregexpr(single_ref_pattern, placeholder_formula)
-  )))
-
-  # Filter out placeholders and pure numbers
-  single_refs <- single_refs[!grepl("<RANGE_", single_refs)]
-  # Filter out things that look like they could be part of function names
-  # by checking if preceded by a letter -- but simpler: just check format
-  single_refs <- single_refs[grepl("^'?[^']*'?!?\\$?[A-Z]{1,3}\\$?[0-9]+$", single_refs)]
-
-  # Sort by length descending to avoid partial replacements (e.g., replacing "A1" inside "AA1")
-  single_refs <- single_refs[order(nchar(single_refs), decreasing = TRUE)]
-
-  for (ref in single_refs) {
-    if (ref == "") next
-    transformed_ref <- transform_single_cell(ref, sheet)
-    # Use word boundaries to avoid replacing substrings
-    # Escape all regex special characters in the ref
-    escaped_ref <- gsub("([\\\\\\[\\](){}^$.*+?|])", "\\\\\\1", ref, perl = TRUE)
-    placeholder_formula <- gsub(
-      paste0("(?<![A-Za-z0-9_$])", escaped_ref, "(?![A-Za-z0-9])"),
-      transformed_ref,
-      placeholder_formula,
-      perl = TRUE
-    )
+  # Find every reference once (quoted, unquoted and local sheet prefixes;
+  # string literals skipped), then substitute right-to-left so earlier
+  # positions stay valid and no reference is rewritten twice.
+  refs <- scan_references(formula)
+  out <- formula
+  for (k in rev(seq_len(nrow(refs)))) {
+    ref <- refs$text[k]
+    r_code <- if (refs$is_range[k]) {
+      transform_range(ref, sheet, sheet_dims)
+    } else {
+      transform_single_cell(ref, sheet)
+    }
+    out <- paste0(substr(out, 1, refs$start[k] - 1L), r_code,
+                  substr(out, refs$end[k] + 1L, nchar(out)))
   }
 
-  # Step 3: Replace range placeholders with transformed ranges
-  for (placeholder in names(placeholder_map)) {
-    range_ref <- placeholder_map[[placeholder]]
-    transformed_range <- transform_range(range_ref, sheet, sheet_dims)
-    placeholder_formula <- gsub(placeholder, transformed_range, placeholder_formula, fixed = TRUE)
-  }
-
-  # Step 4: Transform percentages
-  placeholder_formula <- transform_percentages(placeholder_formula)
-
-  placeholder_formula
+  transform_percentages(out)
 }
 
 #' @keywords internal
